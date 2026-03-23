@@ -509,7 +509,7 @@
                 </div>
                 <div id="role2">
                     <p id="role2P1"><span id="role2txt1">机密</span> · <span id="role2txt2">200</span>万撤离为下限</p>
-                    <p id="role2P2">撤离失败 -2点 幸福度（上限<span id="role2txt3">6</span>点）</p>
+                    <p id="role2P2">撤离失败 <span id="role2txt4">-2</span>点 幸福度（上限<span id="role2txt3">6</span>点）</p>
                 </div>
             </div>
         </div>
@@ -523,15 +523,16 @@
         const satisfySeal = document.getElementById('satisfy-seal');
         const btn1 = document.getElementById('btn1');
         const btn2 = document.getElementById('btn2');
+        const logo = document.getElementById('logo');
         const selectDiv = document.getElementById('select');
         const mainDiv = document.getElementById('main');
 
         // 各档位配置
         const catOptions = {
-            1: { role2txt1: '机密', role2txt2: '200', role2txt3: '6',  maxValue: 15 },
-            2: { role2txt1: '绝密', role2txt2: '600', role2txt3: '15', maxValue: 30 },
-            3: { role2txt1: '绝密', role2txt2: '600', role2txt3: '20', maxValue: 50 },
-            4: { role2txt1: '绝密', role2txt2: '600', role2txt3: '30', maxValue: 70 },
+            1: { role2txt1: '机密', role2txt2: '200', role2txt3: '6', role2txt4: '-2', maxValue: 15 },
+            2: { role2txt1: '绝密', role2txt2: '600', role2txt3: '15', role2txt4: '-3', maxValue: 30 },
+            3: { role2txt1: '绝密', role2txt2: '600', role2txt3: '24', role2txt4: '-3', maxValue: 50 },
+            4: { role2txt1: '绝密', role2txt2: '600', role2txt3: '30', role2txt4: '-3', maxValue: 70 },
         };
 
         function updateDisplay() {
@@ -546,6 +547,7 @@
             document.getElementById('role2txt1').textContent = opt.role2txt1;
             document.getElementById('role2txt2').textContent = opt.role2txt2;
             document.getElementById('role2txt3').textContent = opt.role2txt3;
+            document.getElementById('role2txt4').textContent = opt.role2txt4;
             // 更新幸福度
             maxValue = opt.maxValue;
             currentValue = 0;
@@ -574,6 +576,10 @@
                 currentValue--;
                 updateDisplay();
             }
+        });
+
+        logo.addEventListener('click', function() {
+            window.open('https://sc4gudh4skuka.hbjump.com/sp66ueq0qg6e5', '_blank', 'noopener,noreferrer');
         });
 
         // 初始化显示

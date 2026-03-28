@@ -720,6 +720,7 @@
         let currentDecreasedAmount = 0;
         let hasShownDecreaseNotice = false;
         let hasPlayedMaxSound = false;
+        let hasAudioUnlocked = false;
         let isDecreaseBlockedByNotice = false;
         let isBtn2ListenerBound = false;
         let isActionLocked = false;
@@ -804,19 +805,75 @@
         const background = document.getElementById('background');
         const mainTheater = document.getElementById('mainTheater');
         const temp = document.getElementById('Temp');
+        const AUDIO_VOLUME = 0.25;
 
-        const hoverAudio = new Audio('src/sound/sound1.wma');
-        const clickAudio = new Audio('src/sound/sound2.wma');
-        const maxAudio = new Audio('src/sound/max.wma');
+        const hoverAudio = new Audio('src/sound/sound1.mp3');
+        const clickAudio = new Audio('src/sound/sound2.mp3');
+        const maxAudio = new Audio('src/sound/max.mp3');
         [hoverAudio, clickAudio, maxAudio].forEach(function(a) {
-            a.volume = 0.5;
+            a.volume = AUDIO_VOLUME;
             a.preload = 'auto';
         });
 
-        function playAudio(audio) {
-            audio.currentTime = 0;
-            audio.play().catch(function() {
-                // 忽略浏览器自动播放限制导致的异常
+        const audioCtx = window.AudioContext ? new AudioContext() : null;
+
+        function primeAudio(audio) {
+            const probe = new Audio(audio.src);
+            probe.volume = 0;
+            probe.preload = 'auto';
+            const p = probe.play();
+            if (p && typeof p.then === 'function') {
+                p.then(function() {
+                    probe.pause();
+                    probe.currentTime = 0;
+                }).catch(function() {});
+            }
+        }
+
+        function unlockAudio() {
+            if (hasAudioUnlocked) return;
+            hasAudioUnlocked = true;
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(function() {});
+            }
+            [hoverAudio, clickAudio, maxAudio].forEach(primeAudio);
+        }
+
+        function installAudioUnlockGesture() {
+            function onFirstGesture() {
+                unlockAudio();
+            }
+            document.addEventListener('pointerdown', onFirstGesture, { once: true, passive: true });
+            document.addEventListener('keydown', onFirstGesture, { once: true });
+            document.addEventListener('touchstart', onFirstGesture, { once: true, passive: true });
+        }
+
+        function playFallbackBeep(type) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const isMax = type === 'max';
+            osc.type = isMax ? 'triangle' : 'sine';
+            osc.frequency.setValueAtTime(isMax ? 880 : 560, now);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime((isMax ? 0.08 : 0.04) * AUDIO_VOLUME, now + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + (isMax ? 0.22 : 0.1));
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + (isMax ? 0.24 : 0.12));
+        }
+
+        function playAudio(audio, fallbackType) {
+            if (!audio || !audio.src) return;
+            if (!hasAudioUnlocked) return;
+            const player = new Audio(audio.src);
+            player.volume = AUDIO_VOLUME;
+            player.preload = 'auto';
+            player.play().catch(function(err) {
+                console.warn('音效播放失败，可能是浏览器不支持当前格式：', audio.src, err && err.message ? err.message : err);
+                playFallbackBeep(fallbackType);
             });
         }
 
@@ -836,10 +893,12 @@
                 if (!el) return;
                 el.classList.add('interactiveButton');
                 el.addEventListener('mouseenter', function() {
-                    playAudio(hoverAudio);
+                    if (!hasAudioUnlocked) return;
+                    playAudio(hoverAudio, 'hover');
                 });
                 el.addEventListener('click', function() {
-                    playAudio(clickAudio);
+                    unlockAudio();
+                    playAudio(clickAudio, 'click');
                 });
             });
         }
@@ -847,7 +906,8 @@
         function tryPlayMaxSound() {
             if (currentValue >= maxValue && !hasPlayedMaxSound) {
                 hasPlayedMaxSound = true;
-                playAudio(maxAudio);
+                unlockAudio();
+                playAudio(maxAudio, 'max');
                 saveState();
             }
         }
@@ -1285,6 +1345,7 @@
         }
 
         // 初始化显示
+        installAudioUnlockGesture();
         bindInteractiveEffects();
         applyResponsiveScale();
         // 预加载所有方案的帧，避免选择时出现等待

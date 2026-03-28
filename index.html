@@ -1175,7 +1175,6 @@
 
         function applySelectedCatFrames(optionId) {
             return loadCatFrames(optionId).then(function(frames) {
-                selectedOptionId = optionId;
                 currentFrames = frames;
                 idleFrameNumber = 1;
                 setActorPosition(actorLeft, actorTop);
@@ -1185,6 +1184,7 @@
 
         function selectCat(optionId) {
             const opt = catOptions[optionId];
+            selectedOptionId = optionId;
             // 更新文字
             document.getElementById('role2txt1').textContent = opt.role2txt1;
             document.getElementById('role2txt2').textContent = opt.role2txt2;

@@ -8,6 +8,10 @@
         body {
             font-family: "Source Han Sans SC";
             margin: 0px;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
         }
         /* 背景 */
         #background {
@@ -15,7 +19,11 @@
             width: 1440px;
             height: 900px;
             overflow: hidden;
-            position: relative;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transform-origin: center center;
         }
 
         /* logo */
@@ -272,6 +280,68 @@
             top: 0px;
         }
 
+        /* 减少幸福度的提示 */
+        #notice {
+            display: none;
+            border-radius: 36px;
+            border-width: 5px;
+            width: 538px;
+            height: 319px;
+            left: 724px;
+            top: 251px;
+            transform: scale(0.7);
+            overflow: hidden;
+            z-index: 50;
+        }
+        /* 弹窗顶部圆圈位置调整 */
+        #notice .circle1, #notice .circle2, #notice .circle3 {
+            transform: translate(-33px, -13px) scale(0.9);
+        }
+        /* 圆圈2位置调整 */
+        #notice .circle2 {
+            left: 110px;
+        }
+        /* 圆圈3位置调整 */
+        #notice .circle3 {
+            left: 161px;
+        }
+        /*提示内的p标签*/
+        #notice p {
+            margin: 0;
+            font-weight: 400;
+            font-size: 40px;
+        }
+        /*提示内的文字区域*/
+        #txtBoardArea {
+            position: relative;
+            top: 55px;
+            height: 100%;
+            background: #FAEDEC;
+        }
+        /*提示框确认按钮*/
+        #btnClose {
+            position: absolute;
+            width: 211px;
+            height: 62px;
+            left: 50%;
+            bottom: 25px;
+            transform: translate(-50%, 0);
+            background: rgb(246, 201, 196);
+            border-radius: 35px;
+        }
+        /*提示框p标签调整*/
+        #txtBoardArea p {
+            position: relative;
+            text-align: center;
+            width: 86%;
+            left: 50%;
+            top: 28px;
+            transform: translate(-50%, 0);
+        }
+        /*按钮p标签调整*/
+        #btnClose p {
+            text-align: center;
+        }
         /* #endregion */
 
         /* #region 选择界面 */
@@ -363,7 +433,7 @@
             top: 7px;
             z-index: 12;
         }
-
+        /*方案选择框内价格文字*/
         .Price {
             font-size: 41px;
             font-family: "Source Han Sans SC";
@@ -375,7 +445,7 @@
             transform: translate(-50%, -50%);
             z-index: 13;
         }
-
+        /*方案选择框内猫子片*/
         .imgCat {
             position: absolute;
             width: 181px;
@@ -512,20 +582,40 @@
                     <p id="role2P2">撤离失败 <span id="role2txt4">-2</span>点 幸福度（上限<span id="role2txt3">6</span>点）</p>
                 </div>
             </div>
+            <div id="notice" class="panelStyle">
+                <div class="circle circle1"></div>
+                <div class="circle circle2"></div>
+                <div class="circle circle3"></div>
+                <div id="txtBoardArea">
+                    <p>减少幸福度有上限且不可逆，请谨慎点击。</p>
+                </div>
+                <div id="btnClose">
+                    <p>知道了</p>
+                </div>
+            </div>
         </div>
         <div id="logo"></div>
     </div>
     <script>
         let currentValue = 0;
         let maxValue = 15;
+        let decreaseLimit = 6;
+        let decreasePerClick = 2;
+        let currentDecreasedAmount = 0;
+        let hasShownDecreaseNotice = false;
+        let isDecreaseBlockedByNotice = false;
+        let isBtn2ListenerBound = false;
 
         const satisfyNumber = document.getElementById('satisfy-number');
         const satisfySeal = document.getElementById('satisfy-seal');
         const btn1 = document.getElementById('btn1');
         const btn2 = document.getElementById('btn2');
+        const btnClose = document.getElementById('btnClose');
+        const notice = document.getElementById('notice');
         const logo = document.getElementById('logo');
         const selectDiv = document.getElementById('select');
         const mainDiv = document.getElementById('main');
+        const background = document.getElementById('background');
 
         // 各档位配置
         const catOptions = {
@@ -537,7 +627,7 @@
 
         function updateDisplay() {
             satisfyNumber.textContent = `${currentValue} / ${maxValue}`;
-            const percentage = (currentValue / maxValue) * 100;
+            const percentage = Math.max((currentValue / maxValue) * 100, 0);
             satisfySeal.style.width = `${percentage}%`;
         }
 
@@ -550,11 +640,19 @@
             document.getElementById('role2txt4').textContent = opt.role2txt4;
             // 更新幸福度
             maxValue = opt.maxValue;
+            decreaseLimit = Number(opt.role2txt3);
+            decreasePerClick = Math.abs(Number(opt.role2txt4));
+            currentDecreasedAmount = 0;
             currentValue = 0;
             updateDisplay();
             // 切换界面
             selectDiv.style.display = 'none';
             mainDiv.style.display = 'block';
+
+            if (!isBtn2ListenerBound) {
+                btn2.addEventListener('click', handleBtn2Click);
+                isBtn2ListenerBound = true;
+            }
         }
 
         // 绑定4个选择框的点击事件
@@ -571,19 +669,58 @@
             }
         });
 
-        btn2.addEventListener('click', function() {
-            if (currentValue > 0) {
-                currentValue--;
-                updateDisplay();
+        function handleBtn2Click() {
+            if (!hasShownDecreaseNotice) {
+                hasShownDecreaseNotice = true;
+                isDecreaseBlockedByNotice = true;
+                notice.style.display = 'block';
+                return;
             }
+
+            if (isDecreaseBlockedByNotice) {
+                return;
+            }
+
+            if (currentDecreasedAmount + decreasePerClick > decreaseLimit) {
+                btn2.removeEventListener('click', handleBtn2Click);
+                isBtn2ListenerBound = false;
+                return;
+            }
+
+            currentValue -= decreasePerClick;
+            currentDecreasedAmount += decreasePerClick;
+            updateDisplay();
+
+            if (currentDecreasedAmount >= decreaseLimit) {
+                btn2.removeEventListener('click', handleBtn2Click);
+                isBtn2ListenerBound = false;
+            }
+        }
+
+        btn2.addEventListener('click', handleBtn2Click);
+        isBtn2ListenerBound = true;
+
+        btnClose.addEventListener('click', function() {
+            notice.style.display = 'none';
+            isDecreaseBlockedByNotice = false;
         });
 
         logo.addEventListener('click', function() {
             window.open('https://sc4gudh4skuka.hbjump.com/sp66ueq0qg6e5', '_blank', 'noopener,noreferrer');
         });
 
+        function applyResponsiveScale() {
+            const baseWidth = 1440;
+            const baseHeight = 900;
+            const scale = Math.min(window.innerWidth / baseWidth, window.innerHeight / baseHeight);
+            background.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        }
+
+        window.addEventListener('resize', applyResponsiveScale);
+
         // 初始化显示
         updateDisplay();
+        applyResponsiveScale();
     </script>
 </body>
 </html>

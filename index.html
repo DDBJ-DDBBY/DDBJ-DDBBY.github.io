@@ -599,6 +599,25 @@
             line-height: 28px;
             display: none;
         }
+
+        /* 可点击按钮统一动效 */
+        .interactiveButton {
+            cursor: pointer;
+            transition: transform 0.14s ease;
+            transform-origin: center center;
+        }
+        .interactiveButton:hover {
+            transform: scale(1.06);
+        }
+        .interactiveButton:active {
+            transform: scale(0.97);
+        }
+        #btnClose.interactiveButton:hover {
+            transform: translate(-50%, 0) scale(1.06);
+        }
+        #btnClose.interactiveButton:active {
+            transform: translate(-50%, 0) scale(0.97);
+        }
     </style>
 </head>
 <body>
@@ -700,6 +719,7 @@
         let decreasePerClick = 2;
         let currentDecreasedAmount = 0;
         let hasShownDecreaseNotice = false;
+        let hasPlayedMaxSound = false;
         let isDecreaseBlockedByNotice = false;
         let isBtn2ListenerBound = false;
         let isActionLocked = false;
@@ -718,7 +738,7 @@
             return match ? decodeURIComponent(match[1]) : null;
         }
         function clearGameCookies() {
-            ['catState_optionId','catState_currentValue','catState_decreasedAmount','catState_hasNotice','catState_btn2Active'].forEach(function(n) {
+            ['catState_optionId','catState_currentValue','catState_decreasedAmount','catState_hasNotice','catState_btn2Active','catState_hasPlayedMaxSound'].forEach(function(n) {
                 document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
             });
         }
@@ -728,6 +748,7 @@
             setCookie('catState_decreasedAmount', currentDecreasedAmount, 30);
             setCookie('catState_hasNotice', hasShownDecreaseNotice, 30);
             setCookie('catState_btn2Active', isBtn2ListenerBound, 30);
+            setCookie('catState_hasPlayedMaxSound', hasPlayedMaxSound, 30);
         }
 
         const debugPanel = document.getElementById('debugPanel');
@@ -777,11 +798,59 @@
         const btnClose = document.getElementById('btnClose');
         const notice = document.getElementById('notice');
         const logo = document.getElementById('logo');
+        const resetBtn = document.getElementById('reset');
         const selectDiv = document.getElementById('select');
         const mainDiv = document.getElementById('main');
         const background = document.getElementById('background');
         const mainTheater = document.getElementById('mainTheater');
         const temp = document.getElementById('Temp');
+
+        const hoverAudio = new Audio('src/sound/sound1.wma');
+        const clickAudio = new Audio('src/sound/sound2.wma');
+        const maxAudio = new Audio('src/sound/max.wma');
+        [hoverAudio, clickAudio, maxAudio].forEach(function(a) {
+            a.volume = 0.5;
+            a.preload = 'auto';
+        });
+
+        function playAudio(audio) {
+            audio.currentTime = 0;
+            audio.play().catch(function() {
+                // 忽略浏览器自动播放限制导致的异常
+            });
+        }
+
+        function bindInteractiveEffects() {
+            const targets = [
+                btn1,
+                btn2,
+                btnClose,
+                resetBtn,
+                document.getElementById('selectCatBox1'),
+                document.getElementById('selectCatBox2'),
+                document.getElementById('selectCatBox3'),
+                document.getElementById('selectCatBox4'),
+            ];
+
+            targets.forEach(function(el) {
+                if (!el) return;
+                el.classList.add('interactiveButton');
+                el.addEventListener('mouseenter', function() {
+                    playAudio(hoverAudio);
+                });
+                el.addEventListener('click', function() {
+                    playAudio(clickAudio);
+                });
+            });
+        }
+
+        function tryPlayMaxSound() {
+            if (currentValue >= maxValue && !hasPlayedMaxSound) {
+                hasPlayedMaxSound = true;
+                playAudio(maxAudio);
+                saveState();
+            }
+        }
 
         const catCanvas = document.createElement('canvas');
         catCanvas.width = 400;
@@ -1075,7 +1144,7 @@
             // 切换界面
             selectDiv.style.display = 'none';
             mainDiv.style.display = 'block';
-            document.getElementById('reset').style.display = 'flex';
+            resetBtn.style.display = 'flex';
 
             if (!isBtn2ListenerBound) {
                 btn2.addEventListener('click', handleBtn2Click);
@@ -1096,6 +1165,7 @@
             if (currentValue < maxValue) {
                 currentValue++;
                 updateDisplay();
+                tryPlayMaxSound();
                 saveState();
                 if (!isActionLocked) {
                     playActionAnimation('happy');
@@ -1159,7 +1229,7 @@
         window.addEventListener('resize', applyResponsiveScale);
 
         // 重置按钮
-        document.getElementById('reset').addEventListener('click', function() {
+        resetBtn.addEventListener('click', function() {
             clearGameCookies();
             // 停止动画
             isDecisionActive = false;
@@ -1174,6 +1244,7 @@
             decreasePerClick = 2;
             currentDecreasedAmount = 0;
             hasShownDecreaseNotice = false;
+            hasPlayedMaxSound = false;
             isDecreaseBlockedByNotice = false;
             notice.style.display = 'none';
             // 恢复 btn2 监听
@@ -1185,7 +1256,7 @@
             // 切换回选择界面
             mainDiv.style.display = 'none';
             selectDiv.style.display = 'block';
-            document.getElementById('reset').style.display = 'none';
+            resetBtn.style.display = 'none';
         });
 
         // 从 Cookie 恢复状态
@@ -1198,11 +1269,13 @@
             const savedDecreased = getCookie('catState_decreasedAmount');
             const savedHasNotice = getCookie('catState_hasNotice');
             const savedBtn2Active = getCookie('catState_btn2Active');
+            const savedHasPlayedMaxSound = getCookie('catState_hasPlayedMaxSound');
             // 调用 selectCat 初始化界面和动画，再用保存的真实值覆盖归零的状态
             selectCat(optId);
             if (savedValue !== null) currentValue = Number(savedValue);
             if (savedDecreased !== null) currentDecreasedAmount = Number(savedDecreased);
             if (savedHasNotice === 'true') hasShownDecreaseNotice = true;
+            if (savedHasPlayedMaxSound === 'true') hasPlayedMaxSound = true;
             if (savedBtn2Active === 'false') {
                 btn2.removeEventListener('click', handleBtn2Click);
                 isBtn2ListenerBound = false;
@@ -1212,6 +1285,7 @@
         }
 
         // 初始化显示
+        bindInteractiveEffects();
         applyResponsiveScale();
         // 预加载所有方案的帧，避免选择时出现等待
         [1, 2, 3, 4].forEach(function(id) { loadCatFrames(id); });

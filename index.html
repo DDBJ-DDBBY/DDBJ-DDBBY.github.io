@@ -508,6 +508,70 @@
 
         /* #endregion */
 
+        #Temp {
+            display: block;
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            top: 317px;
+            left: 343px;
+            z-index: 12;
+            pointer-events: none;
+        }
+
+        /* 调试面板 */
+        #debugPanel {
+            display: none;
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            width: 320px;
+            background: rgba(0,0,0,0.75);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            padding: 8px 10px;
+            border-radius: 6px;
+            z-index: 100;
+            pointer-events: none;
+            white-space: pre;
+        }
+        #debugLog {
+            display: none;
+            position: absolute;
+            left: 10px;
+            top: 190px;
+            width: 320px;
+            max-height: 200px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.65);
+            color: #ff0;
+            font-family: monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 6px 10px;
+            border-radius: 6px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #debugToggle {
+            position: absolute;
+            left: 10px;
+            bottom: 10px;
+            width: 80px;
+            height: 28px;
+            background: rgba(0,0,0,0.5);
+            color: #aaa;
+            font-family: monospace;
+            font-size: 11px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            z-index: 101;
+            text-align: center;
+            line-height: 28px;
+        }
     </style>
 </head>
 <body>
@@ -556,7 +620,9 @@
                 <div class="circle circle1"></div>
                 <div class="circle circle2"></div>
                 <div class="circle circle3"></div>
-                <div id="mainTheater" class="theater"></div>
+                <div id="mainTheater" class="theater">
+                    <div id="Temp"></div>
+                </div>
             </div>
             <div id="mainTitle" class="title"></div>
             <div id="satisfy-square">
@@ -595,6 +661,9 @@
             </div>
         </div>
         <div id="logo"></div>
+        <div id="debugPanel"></div>
+        <div id="debugLog"></div>
+        <div id="debugToggle">调试</div>
     </div>
     <script>
         let currentValue = 0;
@@ -605,6 +674,51 @@
         let hasShownDecreaseNotice = false;
         let isDecreaseBlockedByNotice = false;
         let isBtn2ListenerBound = false;
+        let isActionLocked = false;
+        let isDecisionActive = false;
+        let debugEnabled = false;
+        let debugLogLines = [];
+        const DEBUG_LOG_MAX = 10;
+
+        const debugPanel = document.getElementById('debugPanel');
+        const debugLogEl = document.getElementById('debugLog');
+        const debugToggle = document.getElementById('debugToggle');
+
+        function debugLog(msg) {
+            if (!debugEnabled) return;
+            const ts = (performance.now() / 1000).toFixed(2);
+            debugLogLines.push('[' + ts + 's] ' + msg);
+            if (debugLogLines.length > DEBUG_LOG_MAX) debugLogLines.shift();
+            debugLogEl.textContent = debugLogLines.join('\n');
+        }
+
+        function updateDebugPanel() {
+            if (!debugEnabled) return;
+            debugPanel.textContent = [
+                '── 状态 ──────────────────',
+                'actorState    : ' + actorState,
+                'isActionLocked: ' + isActionLocked,
+                'isDecisionAct : ' + isDecisionActive,
+                'decisionTimer : ' + (decisionTimerId !== null ? '运行中' : '无'),
+                '── 位置 ──────────────────',
+                'left          : ' + actorLeft.toFixed(1) + '  (bounds: ' + actorBounds.leftMin + '~' + actorBounds.leftMax + ')',
+                'top           : ' + actorTop.toFixed(1) + '  (bounds: ' + actorBounds.topMin + '~' + actorBounds.topMax + ')',
+                'facing        : ' + actorFacing,
+                '── 动画帧 ────────────────',
+                'idleFrame     : ' + idleFrameNumber,
+                'walkToken     : ' + walkToken,
+                'actionToken   : ' + actionToken,
+            ].join('\n');
+        }
+
+        debugToggle.addEventListener('click', function() {
+            debugEnabled = !debugEnabled;
+            debugPanel.style.display = debugEnabled ? 'block' : 'none';
+            debugLogEl.style.display = debugEnabled ? 'block' : 'none';
+            debugToggle.style.color = debugEnabled ? '#0f0' : '#aaa';
+            debugLogLines = [];
+            if (debugEnabled) updateDebugPanel();
+        });
 
         const satisfyNumber = document.getElementById('satisfy-number');
         const satisfySeal = document.getElementById('satisfy-seal');
@@ -616,6 +730,43 @@
         const selectDiv = document.getElementById('select');
         const mainDiv = document.getElementById('main');
         const background = document.getElementById('background');
+        const mainTheater = document.getElementById('mainTheater');
+        const temp = document.getElementById('Temp');
+
+        const catCanvas = document.createElement('canvas');
+        catCanvas.width = 400;
+        catCanvas.height = 400;
+        catCanvas.style.width = '400px';
+        catCanvas.style.height = '400px';
+        temp.innerHTML = '';
+        temp.appendChild(catCanvas);
+        const catCtx = catCanvas.getContext('2d');
+
+        const actorBounds = {
+            leftMin: 125,
+            leftMax: 520,
+            topMin: 255,
+            topMax: 406,
+        };
+
+        const catPrefixByOption = {
+            1: 'cat3',
+            2: 'cat1',
+            3: 'cat2',
+            4: 'cat4',
+        };
+
+        let selectedOptionId = 1;
+        let idleFrameNumber = 1;
+        let actorFacing = 'left';
+        let actorState = 'idle';
+        let actorLeft = 343;
+        let actorTop = 317;
+        let decisionTimerId = null;
+        let walkToken = 0;
+        let actionToken = 0;
+        let currentFrames = {};
+        const frameCache = {};
 
         // 各档位配置
         const catOptions = {
@@ -629,6 +780,228 @@
             satisfyNumber.textContent = `${currentValue} / ${maxValue}`;
             const percentage = Math.max((currentValue / maxValue) * 100, 0);
             satisfySeal.style.width = `${percentage}%`;
+        }
+
+        function setActorPosition(left, top) {
+            actorLeft = Math.min(Math.max(left, actorBounds.leftMin), actorBounds.leftMax);
+            actorTop = Math.min(Math.max(top, actorBounds.topMin), actorBounds.topMax);
+            temp.style.left = `${actorLeft}px`;
+            temp.style.top = `${actorTop}px`;
+        }
+
+        function drawFrame(frameNumber) {
+            const img = currentFrames[frameNumber];
+            if (!img) {
+                return;
+            }
+
+            catCtx.clearRect(0, 0, catCanvas.width, catCanvas.height);
+            if (actorFacing === 'right') {
+                catCtx.save();
+                catCtx.translate(catCanvas.width, 0);
+                catCtx.scale(-1, 1);
+                catCtx.drawImage(img, 0, 0, catCanvas.width, catCanvas.height);
+                catCtx.restore();
+                return;
+            }
+
+            catCtx.drawImage(img, 0, 0, catCanvas.width, catCanvas.height);
+        }
+
+        function loadCatFrames(optionId) {
+            if (frameCache[optionId]) {
+                return Promise.resolve(frameCache[optionId]);
+            }
+
+            const prefix = catPrefixByOption[optionId];
+            const frames = {};
+            const promises = [];
+
+            for (let i = 1; i <= 10; i++) {
+                const img = new Image();
+                frames[i] = img;
+                promises.push(new Promise(function(resolve) {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                }));
+                img.src = `src/img/mimi/${prefix}-${i}.png`;
+            }
+
+            return Promise.all(promises).then(function() {
+                frameCache[optionId] = frames;
+                return frames;
+            });
+        }
+
+        function enterIdle() {
+            actorState = 'idle';
+            drawFrame(idleFrameNumber);
+            debugLog('enterIdle → 1s后决策');
+            updateDebugPanel();
+            if (isDecisionActive) {
+                scheduleDecision(1000);
+            }
+        }
+
+        function cancelWalk() {
+            walkToken++;
+        }
+
+        function cancelDecision() {
+            if (decisionTimerId) {
+                clearTimeout(decisionTimerId);
+                decisionTimerId = null;
+            }
+        }
+
+        function scheduleDecision(delay) {
+            cancelDecision();
+            debugLog('scheduleDecision delay=' + delay + 'ms');
+            decisionTimerId = setTimeout(function() {
+                decisionTimerId = null;
+                if (actorState !== 'idle' || isActionLocked) {
+                    debugLog('决策跳过 state=' + actorState + ' locked=' + isActionLocked + '，100ms后重试');
+                    updateDebugPanel();
+                    scheduleDecision(100);
+                    return;
+                }
+                const roll = Math.random();
+                const willWalk = roll < 0.25;
+                debugLog('掷骰 ' + roll.toFixed(3) + ' → ' + (willWalk ? '触发walk' : '跳过(re-schedule 2s)'));
+                if (willWalk) {
+                    startWalk();
+                } else {
+                    scheduleDecision(2000);
+                }
+            }, delay);
+            updateDebugPanel();
+        }
+
+        function startWalk() {
+            if (actorState !== 'idle' || isActionLocked) {
+                return;
+            }
+
+            cancelDecision();
+            actorState = 'walk';
+            const localToken = ++walkToken;
+            const startLeft = actorLeft;
+            const startTop = actorTop;
+
+            const speed = 60;
+            const nominalDuration = 1000 + Math.random() * 1500;
+            const nominalDistance = speed * (nominalDuration / 1000);
+            const angle = Math.random() * Math.PI * 2;
+
+            const clampedLeft = Math.min(
+                Math.max(startLeft + Math.cos(angle) * nominalDistance, actorBounds.leftMin),
+                actorBounds.leftMax
+            );
+            const clampedTop = Math.min(
+                Math.max(startTop + Math.sin(angle) * nominalDistance, actorBounds.topMin),
+                actorBounds.topMax
+            );
+
+            const deltaLeft = clampedLeft - startLeft;
+            const deltaTop = clampedTop - startTop;
+            const actualDistance = Math.sqrt(deltaLeft * deltaLeft + deltaTop * deltaTop);
+
+            if (actualDistance < 1) {
+                debugLog('walk取消: actualDistance<1');
+                enterIdle();
+                return;
+            }
+
+            const duration = (actualDistance / speed) * 1000;
+            debugLog('walk开始 dist=' + actualDistance.toFixed(1) + ' dur=' + duration.toFixed(0) + 'ms angle=' + (angle * 180 / Math.PI).toFixed(0) + '°');
+            updateDebugPanel();
+
+            if (deltaLeft > 0) {
+                actorFacing = 'right';
+            } else if (deltaLeft < 0) {
+                actorFacing = 'left';
+            }
+
+            const startTime = performance.now();
+            let lastWalkFrame = 1;
+
+            function walkStep(now) {
+                if (localToken !== walkToken || actorState !== 'walk') {
+                    return;
+                }
+
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                setActorPosition(
+                    startLeft + deltaLeft * progress,
+                    startTop + deltaTop * progress
+                );
+
+                const frameSwitch = Math.floor(elapsed / 160) % 2;
+                lastWalkFrame = frameSwitch === 0 ? 1 : 2;
+                drawFrame(lastWalkFrame);
+
+                if (progress < 1) {
+                    requestAnimationFrame(walkStep);
+                    return;
+                }
+
+                idleFrameNumber = lastWalkFrame;
+                enterIdle();
+            }
+
+            requestAnimationFrame(walkStep);
+        }
+
+
+
+        function playActionAnimation(type) {
+            if (isActionLocked) {
+                return;
+            }
+
+            isActionLocked = true;
+            cancelWalk();
+            cancelDecision();
+
+            const localToken = ++actionToken;
+            actorState = type;
+            const frames = type === 'happy' ? [2, 3, 4, 5, 6, 7, 6, 7, 6] : [8, 9, 10];
+            let frameIndex = 0;
+
+            drawFrame(frames[frameIndex]);
+            const frameTimer = setInterval(function() {
+                if (localToken !== actionToken) {
+                    clearInterval(frameTimer);
+                    return;
+                }
+
+                frameIndex++;
+                if (frameIndex >= frames.length) {
+                    clearInterval(frameTimer);
+                    setTimeout(function() {
+                        if (localToken !== actionToken) return;
+                        enterIdle();
+                    }, 500);
+                    setTimeout(function() {
+                        if (localToken !== actionToken) return;
+                        isActionLocked = false;
+                    }, 2000);
+                    return;
+                }
+
+                drawFrame(frames[frameIndex]);
+            }, 140);
+        }
+
+        function applySelectedCatFrames(optionId) {
+            return loadCatFrames(optionId).then(function(frames) {
+                selectedOptionId = optionId;
+                currentFrames = frames;
+                idleFrameNumber = 1;
+                setActorPosition(actorLeft, actorTop);
+                enterIdle();
+            });
         }
 
         function selectCat(optionId) {
@@ -645,6 +1018,10 @@
             currentDecreasedAmount = 0;
             currentValue = 0;
             updateDisplay();
+
+            isDecisionActive = true;
+            applySelectedCatFrames(optionId);
+
             // 切换界面
             selectDiv.style.display = 'none';
             mainDiv.style.display = 'block';
@@ -666,6 +1043,9 @@
             if (currentValue < maxValue) {
                 currentValue++;
                 updateDisplay();
+                if (!isActionLocked) {
+                    playActionAnimation('happy');
+                }
             }
         });
 
@@ -690,6 +1070,9 @@
             currentValue -= decreasePerClick;
             currentDecreasedAmount += decreasePerClick;
             updateDisplay();
+            if (!isActionLocked) {
+                playActionAnimation('sad');
+            }
 
             if (currentDecreasedAmount >= decreaseLimit) {
                 btn2.removeEventListener('click', handleBtn2Click);
@@ -720,7 +1103,12 @@
 
         // 初始化显示
         updateDisplay();
+        setActorPosition(actorLeft, actorTop);
+        applySelectedCatFrames(selectedOptionId);
         applyResponsiveScale();
+
+        // 预加载所有方案的帧，避免选择时出现等待
+        [1, 2, 3, 4].forEach(function(id) { loadCatFrames(id); });
     </script>
 </body>
 </html>

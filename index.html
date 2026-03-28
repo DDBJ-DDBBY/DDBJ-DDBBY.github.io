@@ -37,6 +37,27 @@
             z-index: 20;
         }
 
+        /* 重置按钮*/
+        #reset {
+            border-radius: 20px;
+            border-width: 4px;
+            border-color: rgb(107, 83, 70);
+            background-color: rgb(247, 229, 231);
+            border-style: solid;
+            position: absolute;
+            width: 70px;
+            height: 31px;
+            top: 42px;
+            left: 273px;
+            z-index: 11;
+            display: none;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: rgb(107, 83, 70);
+        }
+
         /* 场景边框 */
         .panelStyle{
             border-style: solid;
@@ -507,7 +528,8 @@
         /* #endregion */
 
         /* #endregion */
-
+        
+        /* canvas容器 */
         #Temp {
             display: block;
             position: absolute;
@@ -577,6 +599,7 @@
 </head>
 <body>
     <div id="background">
+        <div id="reset">重置</div>
         <div id="select">
             <div id="panelselect" class="panelStyle">
                 <div class="circle circle1"></div>
@@ -680,6 +703,28 @@
         let debugEnabled = false;
         let debugLogLines = [];
         const DEBUG_LOG_MAX = 10;
+
+        // Cookie 工具
+        function setCookie(name, value, days) {
+            const expires = new Date(Date.now() + days * 864e5).toUTCString();
+            document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/; SameSite=Lax';
+        }
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&') + '=([^;]*)'));
+            return match ? decodeURIComponent(match[1]) : null;
+        }
+        function clearGameCookies() {
+            ['catState_optionId','catState_currentValue','catState_decreasedAmount','catState_hasNotice','catState_btn2Active'].forEach(function(n) {
+                document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax';
+            });
+        }
+        function saveState() {
+            setCookie('catState_optionId', selectedOptionId, 30);
+            setCookie('catState_currentValue', currentValue, 30);
+            setCookie('catState_decreasedAmount', currentDecreasedAmount, 30);
+            setCookie('catState_hasNotice', hasShownDecreaseNotice, 30);
+            setCookie('catState_btn2Active', isBtn2ListenerBound, 30);
+        }
 
         const debugPanel = document.getElementById('debugPanel');
         const debugLogEl = document.getElementById('debugLog');
@@ -1026,11 +1071,14 @@
             // 切换界面
             selectDiv.style.display = 'none';
             mainDiv.style.display = 'block';
+            document.getElementById('reset').style.display = 'flex';
 
             if (!isBtn2ListenerBound) {
                 btn2.addEventListener('click', handleBtn2Click);
                 isBtn2ListenerBound = true;
             }
+
+            saveState();
         }
 
         // 绑定4个选择框的点击事件
@@ -1044,6 +1092,7 @@
             if (currentValue < maxValue) {
                 currentValue++;
                 updateDisplay();
+                saveState();
                 if (!isActionLocked) {
                     playActionAnimation('happy');
                 }
@@ -1055,6 +1104,7 @@
                 hasShownDecreaseNotice = true;
                 isDecreaseBlockedByNotice = true;
                 notice.style.display = 'block';
+                saveState();
                 return;
             }
 
@@ -1065,6 +1115,7 @@
             if (currentDecreasedAmount + decreasePerClick > decreaseLimit) {
                 btn2.removeEventListener('click', handleBtn2Click);
                 isBtn2ListenerBound = false;
+                saveState();
                 return;
             }
 
@@ -1079,6 +1130,7 @@
                 btn2.removeEventListener('click', handleBtn2Click);
                 isBtn2ListenerBound = false;
             }
+            saveState();
         }
 
         btn2.addEventListener('click', handleBtn2Click);
@@ -1102,14 +1154,71 @@
 
         window.addEventListener('resize', applyResponsiveScale);
 
-        // 初始化显示
-        updateDisplay();
-        setActorPosition(actorLeft, actorTop);
-        applySelectedCatFrames(selectedOptionId);
-        applyResponsiveScale();
+        // 重置按钮
+        document.getElementById('reset').addEventListener('click', function() {
+            clearGameCookies();
+            // 停止动画
+            isDecisionActive = false;
+            cancelDecision();
+            cancelWalk();
+            actionToken++;
+            isActionLocked = false;
+            // 重置状态
+            currentValue = 0;
+            maxValue = 15;
+            decreaseLimit = 6;
+            decreasePerClick = 2;
+            currentDecreasedAmount = 0;
+            hasShownDecreaseNotice = false;
+            isDecreaseBlockedByNotice = false;
+            notice.style.display = 'none';
+            // 恢复 btn2 监听
+            if (!isBtn2ListenerBound) {
+                btn2.addEventListener('click', handleBtn2Click);
+                isBtn2ListenerBound = true;
+            }
+            updateDisplay();
+            // 切换回选择界面
+            mainDiv.style.display = 'none';
+            selectDiv.style.display = 'block';
+            document.getElementById('reset').style.display = 'none';
+        });
 
+        // 从 Cookie 恢复状态
+        function loadState() {
+            const savedOptionId = getCookie('catState_optionId');
+            if (!savedOptionId) return;
+            // 先读取所有 Cookie 值——selectCat 末尾调用 saveState 会把 Cookie 覆盖为零，须提前读出
+            const optId = Number(savedOptionId);
+            const savedValue = getCookie('catState_currentValue');
+            const savedDecreased = getCookie('catState_decreasedAmount');
+            const savedHasNotice = getCookie('catState_hasNotice');
+            const savedBtn2Active = getCookie('catState_btn2Active');
+            // 调用 selectCat 初始化界面和动画，再用保存的真实值覆盖归零的状态
+            selectCat(optId);
+            if (savedValue !== null) currentValue = Number(savedValue);
+            if (savedDecreased !== null) currentDecreasedAmount = Number(savedDecreased);
+            if (savedHasNotice === 'true') hasShownDecreaseNotice = true;
+            if (savedBtn2Active === 'false') {
+                btn2.removeEventListener('click', handleBtn2Click);
+                isBtn2ListenerBound = false;
+            }
+            updateDisplay();
+            saveState(); // 用真实值重新写回 Cookie
+        }
+
+        // 初始化显示
+        applyResponsiveScale();
         // 预加载所有方案的帧，避免选择时出现等待
         [1, 2, 3, 4].forEach(function(id) { loadCatFrames(id); });
+        // 尝试从 Cookie 恢复，否则走默认初始化
+        if (getCookie('catState_optionId')) {
+            loadState();
+        } else {
+            updateDisplay();
+            setActorPosition(actorLeft, actorTop);
+            applySelectedCatFrames(selectedOptionId);
+        }
     </script>
 </body>
 </html>
